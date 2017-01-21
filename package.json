@@ -1,0 +1,13 @@
+{
+  "name": "comm",
+  "version": "0.5",
+  "main": "index.js",
+  "author": "rich.burke.dev@gmail.com",
+  "license": "MIT",
+  "dependencies": {
+    "bluebird": "^3.4.7",
+    "debug": "^2.6.0",
+    "pm2": "^2.2.3",
+    "uuid": "^3.0.1"
+  }
+}
