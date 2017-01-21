@@ -17,18 +17,19 @@ const rdln = readline.createInterface({
 debug('created readline');
 debugv('rl is', rdln);
 
-rdln.question('What\'s your name? '), (resp) => {
+rdln.question('What\'s your name? ', (resp) => {
   debug('question response: ', resp);
 
   runClient(resp.trim());
   rdln.close();
 }
-rdln.on('line', (resp) => {
-  debug('line response: ', resp);
-
-  runClient(resp.trim());
-  rdln.close();
-});
+);
+// rdln.on('line', (resp) => {
+//   debug('line response: ', resp);
+//
+//   runClient(resp.trim());
+//   rdln.close();
+// });
 rdln.prompt();
 
 const runClient = (name) => {
