@@ -1,13 +1,14 @@
-const fs = require('fs');
 const net = require('net');
 const uuid = require('uuid');
-const debug = require('debug')('rps-server');
+const debug = require('debug')('server');
 
 /**
  * @todo
- * - take input from console
  * - play multiple rounds ('Tough luck "kaboodles", but do you want to play again?')
+ * - need to fix multiple rounds
  * - display results history
+ * - add players to rounds, rather than to the actual game
+ * - validate input
  */
 
 class Round {
@@ -40,49 +41,45 @@ class Round {
       return {
         result: 'tie',
         winner: null
-      }
+      };
     }
     if (guess1.value === 'rock' && guess2.value === 'scissors') {
       return {
         result: 'rock breaks scissors',
         winner: guess1.playreId
-      }
+      };
     }
     if (guess1.value === 'paper' && guess2.value === 'rock') {
       return {
         result: 'paper covers rock',
         winner: guess1.playerId
-      }
+      };
     }
-    if (guess1.value === 'scissors' && guess2.value === 'covers') {
+    if (guess1.value === 'scissors' && guess2.value === 'paper') {
       return {
         result: 'scissors cuts paper',
         winner: guess1.playerId
-      }
+      };
     }
 
     if (guess2.value === 'rock' && guess1.value === 'scissors') {
       return {
         result: 'rock breaks scissors',
         winner: guess2.playerId
-      }
+      };
     }
     if (guess2.value === 'paper' && guess1.value === 'rock') {
       return {
         result: 'paper covers rock',
         winner: guess2.playerId
-      }
+      };
     }
-    if (guess2.value === 'scissors' && guess1.value === 'covers') {
+    if (guess2.value === 'scissors' && guess1.value === 'paper') {
       return {
         result: 'scissors cuts paper',
         winner: guess2.playerId
-      }
+      };
     }
-
-    this.guesses.forEach((guess) => {
-      console.log(guess);
-    });
   }
 }
 
@@ -132,10 +129,12 @@ let game = new Game();
 
 const processCommand = (pkt, player) => {
   const {cmd} = pkt;
+  let numberOfPlayers, anotherRound;
+
   switch(cmd) {
     case 'JOIN':
       player.name = pkt.msg;
-      const numberOfPlayers = game.addPlayer(player);
+      numberOfPlayers = game.addPlayer(player);
 
       return {
         action: 'player_added',
@@ -148,15 +147,31 @@ const processCommand = (pkt, player) => {
         action: 'player_guessed',
         value: pkt.msg
       };
+
+    case 'TRY_AGAIN':
+      numberOfPlayers = game.players.length;
+      anotherRound = String(pkt.msg).trim().toLowerCase().indexOf(0) !== 'n';
+      if (!anotherRound) {
+        numberOfPlayers = game.removePlayer(player.id);
+      }
+
+      return {
+        action: 'another_round',
+        value: anotherRound,
+        numberOfPlayers
+      };
+
     default:
       return {
         type: 'unknown'
-      }
+      };
   }
-}
+};
 
 const broadcast = (pkt) => {
   const players = game.players;
+
+  debug('broadcast', pkt);
 
   players.forEach((player) => {
     const conn = player.conn;
@@ -168,6 +183,8 @@ const broadcast = (pkt) => {
 
 const buildRoundResultMessage = (result) => {
   let msg;
+
+  debug('buildRoundResultMessage', result);
 
   if (result.result === 'tie') {
     const players = game.players;
@@ -182,24 +199,18 @@ const buildRoundResultMessage = (result) => {
 };
 
 const server = net.createServer((conn) => {
-  console.log('player connected');
-
   const player = {
     id: uuid(),
     conn
   };
 
   conn.write(JSON.stringify({
-      "cmd": "IDENT"
+    cmd: 'IDENT'
   }));
 
   conn.on('data', (data) => {
-    console.log('from client' + data + '\n');
-
     const pkt = JSON.parse(data.toString());
     const resp = processCommand(pkt, player);
-
-    console.log(resp.action);
 
     if (resp.action === 'player_added' && resp.numberOfPlayers === 2) {
       game.makeRound();
@@ -217,22 +228,39 @@ const server = net.createServer((conn) => {
 
       if (game.currentRound.arePlayersDone()) {
         const result = game.currentRound.compare();
-
-        console.log('result', result);
-
         const resultMsg = buildRoundResultMessage(result);
-        console.log(resultMsg);
         game.addToHistory();
+
+        console.log(resultMsg);  // eslint-disable-line no-console
+
+        broadcast({
+          cmd: 'TRY_AGAIN'
+        });
+      }
+    }
+
+    /**
+     * Really we should add the player to the new round.  And when we have
+     * two player, then initiate "SHOOT".
+     */
+    if (resp.action === 'another_round') {
+      if (resp.value && resp.numberOfPlayers === 2) {
+        game.makeRound();
+
+        broadcast({
+          cmd: 'SHOOT'
+        });
       }
     }
   });
 
   conn.on('close', () => {
-    const msg = `player "${player.name}" left.`
-    console.log(msg);
+    const msg = `player "${player.name}" left.`;
+    game.removePlayer(player.id);
+    console.log(msg);  // eslint-disable-line no-console
   });
 });
 
 server.listen(5432, () => {
-  console.log('listening for players');
+  console.log('listening for players');  // eslint-disable-line no-console
 });
